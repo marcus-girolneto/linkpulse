@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/net/html"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -140,6 +142,34 @@ func BenchmarkLinks(b *testing.B) {
 	for b.Loop() {
 		if _, err := Links(bytes.NewReader(page)); err != nil {
 			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkParseDOM is the baseline the tokenizer approach is measured
+// against: build the full tree with html.Parse, then walk it.
+func BenchmarkParseDOM(b *testing.B) {
+	page := syntheticPage(500)
+	b.SetBytes(int64(len(page)))
+	b.ReportAllocs()
+	for b.Loop() {
+		doc, err := html.Parse(bytes.NewReader(page))
+		if err != nil {
+			b.Fatal(err)
+		}
+		var n int
+		for node := range doc.Descendants() {
+			if node.Type != html.ElementNode {
+				continue
+			}
+			for _, a := range node.Attr {
+				if a.Key == "href" || a.Key == "src" {
+					n++
+				}
+			}
+		}
+		if n == 0 {
+			b.Fatal("no links found")
 		}
 	}
 }

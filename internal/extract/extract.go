@@ -59,7 +59,8 @@ func Links(r io.Reader) (Result, error) {
 			if !interesting(a) {
 				continue
 			}
-			res.collect(a, readAttrs(z))
+			at := readAttrs(z)
+			res.collect(a, &at)
 		}
 	}
 }
@@ -73,53 +74,89 @@ func interesting(a atom.Atom) bool {
 	return false
 }
 
-type attrs map[string]string
+// attrs holds the attribute values extract cares about. Reading into fixed
+// fields instead of a map avoids allocating for every attribute of every tag.
+type attrs struct {
+	href, src, srcset, poster, rel, name, content string
+	seen                                          uint8
+}
+
+const (
+	seenHref uint8 = 1 << iota
+	seenSrc
+	seenSrcset
+	seenPoster
+	seenRel
+	seenName
+	seenContent
+)
 
 func readAttrs(z *html.Tokenizer) attrs {
-	m := make(attrs, 4)
+	var a attrs
 	for {
 		k, v, more := z.TagAttr()
-		key := string(k)
-		// First occurrence wins, matching browser behavior for duplicates.
-		if _, dup := m[key]; !dup {
-			m[key] = string(v)
+		// The conversion in a switch does not allocate. The first
+		// occurrence of an attribute wins, matching browser behavior.
+		switch string(k) {
+		case "href":
+			a.set(&a.href, seenHref, v)
+		case "src":
+			a.set(&a.src, seenSrc, v)
+		case "srcset":
+			a.set(&a.srcset, seenSrcset, v)
+		case "poster":
+			a.set(&a.poster, seenPoster, v)
+		case "rel":
+			a.set(&a.rel, seenRel, v)
+		case "name":
+			a.set(&a.name, seenName, v)
+		case "content":
+			a.set(&a.content, seenContent, v)
 		}
 		if !more {
-			return m
+			return a
 		}
 	}
 }
 
-func (res *Result) collect(a atom.Atom, at attrs) {
-	tag := a.String()
-	switch a {
+func (a *attrs) set(dst *string, bit uint8, v []byte) {
+	if a.seen&bit != 0 {
+		return
+	}
+	a.seen |= bit
+	*dst = string(v)
+}
+
+func (res *Result) collect(t atom.Atom, a *attrs) {
+	tag := t.String()
+	switch t {
 	case atom.Base:
-		if href, ok := at["href"]; ok && res.Base == "" {
-			res.Base = strings.TrimSpace(href)
+		if a.seen&seenHref != 0 && res.Base == "" {
+			res.Base = strings.TrimSpace(a.href)
 		}
 	case atom.Meta:
-		if strings.EqualFold(at["name"], "robots") && hasToken(at["content"], "nofollow", "none") {
+		if strings.EqualFold(a.name, "robots") && hasToken(a.content, "nofollow", "none") {
 			res.NoFollow = true
 		}
 	case atom.A, atom.Area:
-		res.add(tag, "href", at["href"])
+		res.add(tag, "href", a.href)
 	case atom.Link:
-		if hasToken(at["rel"], "preconnect", "dns-prefetch") {
+		if hasToken(a.rel, "preconnect", "dns-prefetch") {
 			// These name origins rather than resources; the bare origin
 			// often 404s and checking it says nothing about the page.
 			return
 		}
-		res.add(tag, "href", at["href"])
+		res.add(tag, "href", a.href)
 	case atom.Img, atom.Source:
-		res.add(tag, "src", at["src"])
-		for _, u := range parseSrcset(at["srcset"]) {
+		res.add(tag, "src", a.src)
+		for _, u := range parseSrcset(a.srcset) {
 			res.add(tag, "srcset", u)
 		}
 	case atom.Video:
-		res.add(tag, "src", at["src"])
-		res.add(tag, "poster", at["poster"])
+		res.add(tag, "src", a.src)
+		res.add(tag, "poster", a.poster)
 	case atom.Script, atom.Iframe, atom.Audio:
-		res.add(tag, "src", at["src"])
+		res.add(tag, "src", a.src)
 	}
 }
 
