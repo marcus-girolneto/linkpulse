@@ -1,0 +1,7 @@
+/bin/
+/dist/
+/linkpulse
+*.test
+*.out
+coverage.*
+.DS_Store

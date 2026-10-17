@@ -1,0 +1,63 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - errcheck
+    - errorlint
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - noctx
+    - revive
+    - staticcheck
+    - unused
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: indent-error-flow
+        - name: error-strings
+        - name: error-return
+        - name: errorf
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: receiver-naming
+        - name: unused-parameter
+        - name: unreachable-code
+        - name: redefines-builtin-id
+    misspell:
+      locale: US
+  exclusions:
+    generated: lax
+    presets:
+      - std-error-handling
+    rules:
+      # Test servers and fixtures intentionally use plain HTTP, fixed paths and
+      # unchecked writes to http.ResponseWriter.
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+          - noctx
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/marcus-girolneto/linkpulse
