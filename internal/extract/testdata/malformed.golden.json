@@ -1,0 +1,49 @@
+{
+  "links": [
+    {
+      "url": "/unquoted",
+      "tag": "a",
+      "attr": "href"
+    },
+    {
+      "url": "/single",
+      "tag": "a",
+      "attr": "href"
+    },
+    {
+      "url": "/dup",
+      "tag": "a",
+      "attr": "href"
+    },
+    {
+      "url": "/padded",
+      "tag": "a",
+      "attr": "href"
+    },
+    {
+      "url": "/img/a.png",
+      "tag": "img",
+      "attr": "src"
+    },
+    {
+      "url": "/img/b.png",
+      "tag": "img",
+      "attr": "src"
+    },
+    {
+      "url": "/unclosed-div",
+      "tag": "a",
+      "attr": "href"
+    },
+    {
+      "url": "/in-table",
+      "tag": "a",
+      "attr": "href"
+    },
+    {
+      "url": "/x?q=a b",
+      "tag": "a",
+      "attr": "href"
+    }
+  ]
+}

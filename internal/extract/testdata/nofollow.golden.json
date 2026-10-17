@@ -1,0 +1,15 @@
+{
+  "links": [
+    {
+      "url": "/private/one",
+      "tag": "a",
+      "attr": "href"
+    },
+    {
+      "url": "/private/two",
+      "tag": "a",
+      "attr": "href"
+    }
+  ],
+  "nofollow": true
+}

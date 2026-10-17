@@ -1,0 +1,110 @@
+{
+  "links": [
+    {
+      "url": "/assets/site.css",
+      "tag": "link",
+      "attr": "href"
+    },
+    {
+      "url": "favicon.ico",
+      "tag": "link",
+      "attr": "href"
+    },
+    {
+      "url": "https://blog.example.com/posts/latest",
+      "tag": "link",
+      "attr": "href"
+    },
+    {
+      "url": "https://cdn.example.net/analytics.js",
+      "tag": "script",
+      "attr": "src"
+    },
+    {
+      "url": "/",
+      "tag": "a",
+      "attr": "href"
+    },
+    {
+      "url": "../about.html",
+      "tag": "a",
+      "attr": "href"
+    },
+    {
+      "url": "#comments",
+      "tag": "a",
+      "attr": "href"
+    },
+    {
+      "url": "mailto:editor",
+      "tag": "a",
+      "attr": "href"
+    },
+    {
+      "url": "javascript:void(0)",
+      "tag": "a",
+      "attr": "href"
+    },
+    {
+      "url": "hero.avif",
+      "tag": "source",
+      "attr": "srcset"
+    },
+    {
+      "url": "hero@2x.avif",
+      "tag": "source",
+      "attr": "srcset"
+    },
+    {
+      "url": "hero.jpg",
+      "tag": "img",
+      "attr": "src"
+    },
+    {
+      "url": "hero-480.jpg",
+      "tag": "img",
+      "attr": "srcset"
+    },
+    {
+      "url": "hero-960.jpg",
+      "tag": "img",
+      "attr": "srcset"
+    },
+    {
+      "url": "https://pkg.go.dev/golang.org/x/net/html",
+      "tag": "a",
+      "attr": "href"
+    },
+    {
+      "url": "https://example.org/Spec?a=1\u0026b=2#sec",
+      "tag": "a",
+      "attr": "href"
+    },
+    {
+      "url": "https://video.example.com/embed/42",
+      "tag": "iframe",
+      "attr": "src"
+    },
+    {
+      "url": "/media/demo.mp4",
+      "tag": "video",
+      "attr": "src"
+    },
+    {
+      "url": "/media/demo.jpg",
+      "tag": "video",
+      "attr": "poster"
+    },
+    {
+      "url": "/media/demo.mp3",
+      "tag": "audio",
+      "attr": "src"
+    },
+    {
+      "url": "/map/region-1",
+      "tag": "area",
+      "attr": "href"
+    }
+  ],
+  "base": "https://blog.example.com/posts/"
+}

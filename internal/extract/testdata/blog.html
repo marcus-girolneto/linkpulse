@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Engineering blog</title>
+  <base href="https://blog.example.com/posts/">
+  <link rel="preconnect" href="https://fonts.gstatic.example">
+  <link rel="dns-prefetch" href="//cdn.example.net">
+  <link rel="stylesheet" href="/assets/site.css">
+  <link rel="icon" href="favicon.ico">
+  <link rel="canonical" href="https://blog.example.com/posts/latest">
+  <script async src="https://cdn.example.net/analytics.js"></script>
+  <script>
+    document.write('<a href="/never-extracted">');
+  </script>
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a>
+    <a href="../about.html">About</a>
+    <a href="#comments">Jump to comments</a>
+    <a href="mailto:editor">Contact</a>
+    <a href="javascript:void(0)" onclick="menu()">Menu</a>
+  </nav>
+  <article>
+    <h1>Building a link checker</h1>
+    <picture>
+      <source srcset="hero.avif 1x, hero@2x.avif 2x" type="image/avif">
+      <img src="hero.jpg" srcset="hero-480.jpg 480w, hero-960.jpg 960w" alt="hero">
+    </picture>
+    <p>See the <a href="https://pkg.go.dev/golang.org/x/net/html">tokenizer docs</a>
+       and <A HREF="https://example.org/Spec?a=1&amp;b=2#sec">the spec</A>.</p>
+    <iframe src="https://video.example.com/embed/42"></iframe>
+    <video src="/media/demo.mp4" poster="/media/demo.jpg"></video>
+    <audio src="/media/demo.mp3"></audio>
+    <map name="m"><area href="/map/region-1" alt="r1"></map>
+    <!-- <a href="/commented-out">old link</a> -->
+  </article>
+</body>
+</html>
