@@ -131,7 +131,10 @@ func New(client *http.Client, gate Gate, cfg Config) *Checker {
 
 // Check requests u. With fetch set it uses GET and, if the final response
 // is a successful HTML page, returns its body. Otherwise it sends HEAD and
-// repeats the check with GET if the server answers 405 or 501.
+// confirms any error status with GET, because HEAD support is uneven in
+// practice: besides the expected 405 and 501, some servers answer HEAD with
+// 403 or even 404 for pages that load fine. 429 is not re-requested, since
+// the server has just asked for fewer requests.
 func (c *Checker) Check(ctx context.Context, u *url.URL, fetch bool) Result {
 	start := time.Now()
 	method := http.MethodHead
@@ -149,7 +152,7 @@ func (c *Checker) Check(ctx context.Context, u *url.URL, fetch bool) Result {
 }
 
 func headRejected(status int) bool {
-	return status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented
+	return status >= 400 && status != http.StatusTooManyRequests
 }
 
 func (c *Checker) follow(ctx context.Context, method string, u *url.URL, fetch bool) Result {

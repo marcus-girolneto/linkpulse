@@ -190,7 +190,7 @@ func TestCrawlSite(t *testing.T) {
 		{url: s.URL + "/logo.png", status: 200, method: "HEAD"},
 		{url: s.URL + "/hidden", status: 200, method: "HEAD"},
 		{url: ext.URL + "/ok", status: 200, method: "HEAD"},
-		{url: ext.URL + "/gone", status: 410, broken: true, method: "HEAD"},
+		{url: ext.URL + "/gone", status: 410, broken: true, method: "GET"},
 	}
 	for _, tt := range tests {
 		l, ok := links[tt.url]

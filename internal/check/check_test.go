@@ -87,6 +87,13 @@ func testServer(t *testing.T) *httptest.Server {
 		}
 		fmt.Fprint(w, "ok")
 	})
+	mux.HandleFunc("/head-404", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		fmt.Fprint(w, "single-page apps sometimes do this")
+	})
 	mux.HandleFunc("/head-501", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {
 			w.WriteHeader(http.StatusNotImplemented)
@@ -183,7 +190,8 @@ func TestCheck(t *testing.T) {
 	}{
 		{name: "head ok", path: "/ok", wantStatus: 200, wantMethod: "HEAD", wantAttempts: 1, wantFinal: "/ok", wantType: "text/html"},
 		{name: "get ok with body", path: "/ok", fetch: true, wantStatus: 200, wantMethod: "GET", wantAttempts: 1, wantFinal: "/ok", wantBody: true, wantType: "text/html"},
-		{name: "not found", path: "/missing", wantStatus: 404, wantMethod: "HEAD", wantAttempts: 1, wantFinal: "/missing"},
+		{name: "not found confirmed with get", path: "/missing", wantStatus: 404, wantMethod: "GET", wantAttempts: 2, wantFinal: "/missing"},
+		{name: "head 404 but get 200", path: "/head-404", wantStatus: 200, wantMethod: "GET", wantAttempts: 2, wantFinal: "/head-404"},
 		{name: "fetch not found has no body", path: "/missing", fetch: true, wantStatus: 404, wantMethod: "GET", wantAttempts: 1, wantFinal: "/missing"},
 		{name: "head 405 falls back to get", path: "/no-head", wantStatus: 200, wantMethod: "GET", wantAttempts: 2, wantFinal: "/no-head"},
 		{name: "head 501 falls back to get", path: "/head-501", wantStatus: 410, wantMethod: "GET", wantAttempts: 2, wantFinal: "/head-501"},
@@ -194,8 +202,9 @@ func TestCheck(t *testing.T) {
 		{name: "redirect to unsupported scheme", path: "/bad-location", wantHops: 1, wantAttempts: 1, wantMethod: "HEAD", wantDescribe: `invalid redirect location "mailto:someone": unsupported scheme: mailto`},
 		{name: "3xx without location is final", path: "/redirect-no-location", wantStatus: 302, wantMethod: "HEAD", wantAttempts: 1, wantFinal: "/redirect-no-location"},
 		{name: "retry transient 503", path: "/flaky", cfg: Config{Retries: 2}, wantStatus: 200, wantMethod: "HEAD", wantAttempts: 2, wantFinal: "/flaky"},
-		{name: "retries exhausted", path: "/always-503", cfg: Config{Retries: 2}, wantStatus: 503, wantMethod: "HEAD", wantAttempts: 3, wantFinal: "/always-503"},
+		{name: "retries exhausted", path: "/always-503", fetch: true, cfg: Config{Retries: 2}, wantStatus: 503, wantMethod: "GET", wantAttempts: 3, wantFinal: "/always-503"},
 		{name: "retry-after beyond limit not retried", path: "/retry-after-long", cfg: Config{Retries: 3}, wantStatus: 429, wantMethod: "HEAD", wantAttempts: 1, wantFinal: "/retry-after-long"},
+		{name: "retries exhausted then confirmed with get", path: "/always-503", cfg: Config{Retries: 1}, wantStatus: 503, wantMethod: "GET", wantAttempts: 4, wantFinal: "/always-503"},
 		{name: "timeout retried then reported", path: "/slow", cfg: Config{Timeout: 30 * time.Millisecond, Retries: 1}, wantErr: ErrTimeout, wantDescribe: "timeout", wantAttempts: 2, wantMethod: "HEAD"},
 		{name: "fetch non-html skips body", path: "/image", fetch: true, wantStatus: 200, wantMethod: "GET", wantAttempts: 1, wantFinal: "/image", wantType: "image/png"},
 		{name: "fetch sniffs html", path: "/untyped", fetch: true, wantStatus: 200, wantMethod: "GET", wantAttempts: 1, wantFinal: "/untyped", wantBody: true, wantType: "text/html"},
