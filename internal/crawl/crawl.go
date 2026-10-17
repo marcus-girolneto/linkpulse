@@ -80,7 +80,7 @@ type Source struct {
 type Link struct {
 	URL      string
 	Internal bool
-	// Page is true when the URL was fetched as a page and parsed for links.
+	// Page is true when the URL was fetched with GET and returned HTML.
 	Page  bool
 	Depth int
 	// Checked is false when the crawl was interrupted before this link
@@ -235,7 +235,7 @@ func (c *Crawler) process(ctx context.Context, st *state, j job) []job {
 		c.cfg.OnResult(link)
 	}
 
-	if !j.crawl || len(res.Body) == 0 || !st.isInternal(res.FinalURL) {
+	if !j.crawl || len(res.Body) == 0 || !st.claimPage(res.FinalURL) {
 		return nil
 	}
 	page, err := extract.Links(bytes.NewReader(res.Body))
@@ -248,7 +248,6 @@ func (c *Crawler) process(ctx context.Context, st *state, j job) []job {
 			base = b
 		}
 	}
-	st.pageParsed()
 
 	seen := make(map[string]bool, len(page.Links))
 	var found []job
@@ -290,7 +289,7 @@ type state struct {
 	hosts     map[string]bool
 	entries   map[string]*entry
 	scheduled int
-	parsed    int
+	parsed    map[string]bool
 	start     string
 }
 
@@ -299,6 +298,7 @@ func newState(cfg *Config, start *url.URL) *state {
 		cfg:     cfg,
 		hosts:   map[string]bool{start.Host: true},
 		entries: make(map[string]*entry),
+		parsed:  make(map[string]bool),
 		start:   start.String(),
 	}
 }
@@ -307,19 +307,21 @@ func (s *state) seed(start *url.URL) (job, bool) {
 	return s.discover(start, start.String(), Source{}, 0, true)
 }
 
-func (s *state) isInternal(u *url.URL) bool {
-	if u == nil {
+// claimPage reports whether the page at final (the URL after redirects)
+// should be parsed: it must be on the crawled site and not parsed before.
+// Without this, /old redirecting to /new would parse /new twice.
+func (s *state) claimPage(final *url.URL) bool {
+	if final == nil {
 		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.hosts[u.Host]
-}
-
-func (s *state) pageParsed() {
-	s.mu.Lock()
-	s.parsed++
-	s.mu.Unlock()
+	key := final.String()
+	if !s.hosts[final.Host] || s.parsed[key] {
+		return false
+	}
+	s.parsed[key] = true
+	return true
 }
 
 // navigable reports whether a tag references a document worth crawling.
@@ -439,7 +441,7 @@ func (s *state) report(began time.Time, interrupted bool) *Report {
 		StartedAt:   began,
 		Duration:    time.Since(began),
 		Interrupted: interrupted,
-		Pages:       s.parsed,
+		Pages:       len(s.parsed),
 		Links:       make([]Link, 0, len(s.entries)),
 	}
 	for _, e := range s.entries {

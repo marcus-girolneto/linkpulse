@@ -163,9 +163,10 @@ func TestCrawlSite(t *testing.T) {
 	if rep.Interrupted {
 		t.Error("report marked interrupted")
 	}
-	// /, /a, /b, /redir (parsed at its target), /deep/1-3 and /nofollow.
-	if rep.Pages != 8 {
-		t.Errorf("pages parsed = %d, want 8", rep.Pages)
+	// /, /a, /b, /deep/1-3 and /nofollow; /redir lands on /a, which is
+	// parsed only once.
+	if rep.Pages != 7 {
+		t.Errorf("pages parsed = %d, want 7", rep.Pages)
 	}
 
 	tests := []struct {
