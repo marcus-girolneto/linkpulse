@@ -1,0 +1,18 @@
+[1mlinkpulse[0m https://example.com/
+[2m3 pages crawled, 9 links checked in 1.23s[0m
+
+[1m[31mBroken links (4)[0m
+
+  [2mSTATUS[0m             [2mURL[0m                                  [2mFOUND ON[0m
+  [31m404[0m                https://example.com/blog/old-post    https://example.com/blog/ (+5 more)
+  [31m500[0m                https://example.com/search?q=a|b     https://example.com/
+  [31mdns: no such host[0m  https://gone.example.org/            https://example.com/blog/
+  [31mtimeout[0m            https://slow.example.org/report.pdf  https://example.com/blog/
+
+[1m[33mRedirects (1)[0m
+
+  [2mSTATUS[0m  [2mURL[0m                       [2mTARGET[0m
+  [33m301[0m     https://example.com/docs  https://docs.example.com/
+
+[33mInterrupted: partial results, 1 link not checked.[0m
+[31m11 links: 5 ok, 4 broken, 1 redirected, 1 skipped[0m

@@ -1,0 +1,12 @@
+linkpulse https://example.com/
+3 pages crawled, 9 links checked in 1.23s
+
+Broken links (4)
+
+  STATUS             URL                                  FOUND ON
+  404                https://example.com/blog/old-post    https://example.com/blog/ (+5 more)
+  500                https://example.com/search?q=a|b     https://example.com/
+  dns: no such host  https://gone.example.org/            https://example.com/blog/
+  timeout            https://slow.example.org/report.pdf  https://example.com/blog/
+
+10 links: 5 ok, 4 broken, 1 redirected, 1 skipped

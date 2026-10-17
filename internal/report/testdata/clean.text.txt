@@ -1,0 +1,4 @@
+linkpulse https://example.com/
+3 pages crawled, 5 links checked in 1.23s
+
+6 links: 5 ok, 0 broken, 1 redirected, 1 skipped. No broken links.

@@ -1,0 +1,9 @@
+[1mlinkpulse[0m https://example.com/
+[2m3 pages crawled, 5 links checked in 1.23s[0m
+
+[1m[33mRedirects (1)[0m
+
+  [2mSTATUS[0m  [2mURL[0m                       [2mTARGET[0m
+  [33m301[0m     https://example.com/docs  https://docs.example.com/
+
+[32m6 links: 5 ok, 0 broken, 1 redirected, 1 skipped. No broken links.[0m

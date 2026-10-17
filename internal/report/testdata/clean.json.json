@@ -1,0 +1,133 @@
+{
+  "start": "https://example.com/",
+  "started_at": "2026-10-17T12:00:00Z",
+  "duration_ms": 1234,
+  "interrupted": false,
+  "summary": {
+    "pages": 3,
+    "total": 6,
+    "ok": 5,
+    "broken": 0,
+    "redirected": 1,
+    "skipped": 1,
+    "unchecked": 0
+  },
+  "links": [
+    {
+      "url": "https://cdn.example.net/app.js",
+      "state": "ok",
+      "status": 200,
+      "internal": false,
+      "page": false,
+      "depth": 0,
+      "method": "HEAD",
+      "attempts": 1,
+      "duration_ms": 40,
+      "found_on": [
+        {
+          "page": "https://example.com/",
+          "tag": "script",
+          "attr": "src"
+        }
+      ],
+      "found_on_count": 1
+    },
+    {
+      "url": "https://example.com/",
+      "state": "ok",
+      "status": 200,
+      "internal": true,
+      "page": true,
+      "depth": 0,
+      "method": "GET",
+      "attempts": 1,
+      "duration_ms": 80,
+      "found_on_count": 0
+    },
+    {
+      "url": "https://example.com/about",
+      "state": "ok",
+      "status": 200,
+      "internal": true,
+      "page": true,
+      "depth": 1,
+      "method": "GET",
+      "attempts": 1,
+      "duration_ms": 20,
+      "found_on": [
+        {
+          "page": "https://example.com/",
+          "tag": "a",
+          "attr": "href"
+        },
+        {
+          "page": "https://example.com/blog/",
+          "tag": "a",
+          "attr": "href"
+        }
+      ],
+      "found_on_count": 2
+    },
+    {
+      "url": "https://example.com/admin/",
+      "state": "skipped",
+      "skip_reason": "robots.txt",
+      "internal": true,
+      "page": false,
+      "depth": 1,
+      "found_on": [
+        {
+          "page": "https://example.com/",
+          "tag": "a",
+          "attr": "href"
+        }
+      ],
+      "found_on_count": 1
+    },
+    {
+      "url": "https://example.com/blog/",
+      "state": "ok",
+      "status": 200,
+      "internal": true,
+      "page": true,
+      "depth": 1,
+      "method": "GET",
+      "attempts": 1,
+      "duration_ms": 30,
+      "found_on": [
+        {
+          "page": "https://example.com/",
+          "tag": "a",
+          "attr": "href"
+        }
+      ],
+      "found_on_count": 1
+    },
+    {
+      "url": "https://example.com/docs",
+      "state": "ok",
+      "status": 200,
+      "internal": true,
+      "page": true,
+      "depth": 1,
+      "method": "GET",
+      "redirects": [
+        {
+          "url": "https://example.com/docs",
+          "status": 301
+        }
+      ],
+      "final_url": "https://docs.example.com/",
+      "attempts": 2,
+      "duration_ms": 300,
+      "found_on": [
+        {
+          "page": "https://example.com/",
+          "tag": "a",
+          "attr": "href"
+        }
+      ],
+      "found_on_count": 1
+    }
+  ]
+}
