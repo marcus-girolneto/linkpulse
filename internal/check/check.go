@@ -157,7 +157,9 @@ func (c *Checker) follow(ctx context.Context, method string, u *url.URL, fetch b
 	cur := u
 	seen := map[string]bool{cur.String(): true}
 	for {
-		resp, attempts, err := c.doWithRetry(ctx, method, cur)
+		// The body is closed by discard on every path below; a deferred close
+		// would hold connections and gate permits across redirect hops.
+		resp, attempts, err := c.doWithRetry(ctx, method, cur) //nolint:bodyclose // see above
 		res.Attempts += attempts
 		if err != nil {
 			res.Err = err

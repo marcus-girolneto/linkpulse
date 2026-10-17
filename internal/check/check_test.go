@@ -390,12 +390,12 @@ func TestBackoffGrowsWithJitter(t *testing.T) {
 func TestMediaType(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{
-		"":                          "",
-		"text/html; charset=utf-8":  "text/html",
-		"TEXT/HTML":                 "text/html",
-		"application/xhtml+xml":     "application/xhtml+xml",
-		"text/html; charset=\"bad":  "text/html",
-		"image/png;;":               "image/png",
+		"":                         "",
+		"text/html; charset=utf-8": "text/html",
+		"TEXT/HTML":                "text/html",
+		"application/xhtml+xml":    "application/xhtml+xml",
+		"text/html; charset=\"bad": "text/html",
+		"image/png;;":              "image/png",
 	}
 	for in, want := range tests {
 		if got := mediaType(in); got != want {

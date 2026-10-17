@@ -1,0 +1,459 @@
+// Package crawl walks a website breadth-first from a start URL, checking
+// every link it finds and following links that stay on the same host.
+//
+// Work is executed by a fixed pool of workers fed by a single dispatcher
+// goroutine. The dispatcher owns an unbounded queue, which lets workers
+// enqueue newly discovered links without ever blocking on each other, and
+// counts outstanding jobs so it knows when the crawl is complete.
+package crawl
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"net/url"
+	"regexp"
+	"sort"
+	"sync"
+	"time"
+
+	"github.com/marcus-girolneto/linkpulse/internal/check"
+	"github.com/marcus-girolneto/linkpulse/internal/extract"
+	"github.com/marcus-girolneto/linkpulse/internal/urlnorm"
+)
+
+// Checker checks a single URL. *check.Checker satisfies it.
+type Checker interface {
+	Check(ctx context.Context, u *url.URL, fetch bool) check.Result
+}
+
+// RobotsPolicy decides whether a path on the crawled site may be requested.
+// *robots.Rules satisfies it.
+type RobotsPolicy interface {
+	Allowed(path string) bool
+}
+
+// Skip reasons reported in Link.Skipped.
+const (
+	SkipExcluded = "excluded"
+	SkipRobots   = "robots.txt"
+	SkipExternal = "external"
+)
+
+// maxSources bounds how many referring pages are remembered per link. A
+// navigation link present on every page would otherwise grow without limit.
+const maxSources = 25
+
+// Config controls a crawl.
+type Config struct {
+	// MaxDepth is how many links away from the start page the crawler will
+	// follow. Zero checks the start page and its links only. Negative means
+	// unlimited.
+	MaxDepth int
+	// MaxPages caps the number of pages fetched and parsed. Zero or negative
+	// means unlimited.
+	MaxPages int
+	// Workers is the number of concurrent checks. Defaults to 16.
+	Workers int
+	// Include, when non-empty, restricts which same-host pages are crawled
+	// for further links. Links on crawled pages are still checked.
+	Include []*regexp.Regexp
+	// Exclude lists patterns for URLs that are neither checked nor crawled.
+	Exclude []*regexp.Regexp
+	// Robots, if set, is consulted before requesting any same-host URL.
+	Robots RobotsPolicy
+	// SkipExternal disables checking links that leave the start host.
+	SkipExternal bool
+	// OnResult, if set, is called from worker goroutines after each check
+	// completes. It must be safe for concurrent use and should be fast.
+	OnResult func(Link)
+}
+
+// Source records where a link was found.
+type Source struct {
+	Page string
+	Tag  string
+	Attr string
+}
+
+// Link is the outcome for one unique (normalized) URL.
+type Link struct {
+	URL      string
+	Internal bool
+	// Page is true when the URL was fetched as a page and parsed for links.
+	Page  bool
+	Depth int
+	// Checked is false when the crawl was interrupted before this link
+	// could be checked, or when the link was skipped.
+	Checked   bool
+	Skipped   string
+	Status    int
+	Method    string
+	Redirects []check.Hop
+	FinalURL  string
+	Error     string
+	Attempts  int
+	Duration  time.Duration
+	// Sources holds up to maxSources referring pages; SourceCount is the
+	// total number of distinct referring pages seen.
+	Sources     []Source
+	SourceCount int
+}
+
+// Broken reports whether the link was checked and failed.
+func (l *Link) Broken() bool {
+	return l.Checked && (l.Error != "" || l.Status >= 400 || l.Status == 0)
+}
+
+// Redirected reports whether the link was checked, succeeded and went
+// through at least one redirect.
+func (l *Link) Redirected() bool {
+	return l.Checked && !l.Broken() && len(l.Redirects) > 0
+}
+
+// Report is the result of a crawl.
+type Report struct {
+	Start       string
+	StartedAt   time.Time
+	Duration    time.Duration
+	Interrupted bool
+	// Pages is the number of pages fetched and parsed for links.
+	Pages int
+	// Links holds one entry per unique URL, sorted by URL.
+	Links []Link
+}
+
+// Stats summarizes a report.
+type Stats struct {
+	Total, OK, Broken, Redirected, Skipped, Unchecked int
+}
+
+// Stats counts links by outcome. Redirected links are also counted as OK.
+func (r *Report) Stats() Stats {
+	s := Stats{Total: len(r.Links)}
+	for i := range r.Links {
+		l := &r.Links[i]
+		switch {
+		case l.Skipped != "":
+			s.Skipped++
+		case !l.Checked:
+			s.Unchecked++
+		case l.Broken():
+			s.Broken++
+		default:
+			s.OK++
+			if len(l.Redirects) > 0 {
+				s.Redirected++
+			}
+		}
+	}
+	return s
+}
+
+// Crawler runs crawls. It holds no per-crawl state and may be reused.
+type Crawler struct {
+	checker Checker
+	cfg     Config
+}
+
+// New returns a Crawler that uses checker for every request.
+func New(checker Checker, cfg Config) *Crawler {
+	if cfg.Workers <= 0 {
+		cfg.Workers = 16
+	}
+	return &Crawler{checker: checker, cfg: cfg}
+}
+
+type job struct {
+	e     *entry
+	crawl bool
+}
+
+// Run crawls from start until there is nothing left to do or ctx is done.
+// On cancellation it stops dispatching, waits for in-flight checks to
+// return and reports everything gathered so far with Interrupted set.
+func (c *Crawler) Run(ctx context.Context, start *url.URL) *Report {
+	began := time.Now()
+	st := newState(&c.cfg, start)
+
+	jobs := make(chan job)
+	results := make(chan []job)
+	var wg sync.WaitGroup
+	for range c.cfg.Workers {
+		wg.Go(func() {
+			for j := range jobs {
+				results <- c.process(ctx, st, j)
+			}
+		})
+	}
+
+	var pending []job
+	if first, ok := st.seed(start); ok {
+		pending = append(pending, first)
+	}
+	outstanding := len(pending)
+	done := ctx.Done()
+	for outstanding > 0 {
+		var (
+			out  chan<- job
+			next job
+		)
+		if len(pending) > 0 {
+			out, next = jobs, pending[0]
+		}
+		select {
+		case out <- next:
+			pending[0] = job{}
+			pending = pending[1:]
+		case found := <-results:
+			outstanding--
+			if ctx.Err() == nil {
+				pending = append(pending, found...)
+				outstanding += len(found)
+			}
+		case <-done:
+			outstanding -= len(pending)
+			pending = nil
+			done = nil
+		}
+	}
+	close(jobs)
+	wg.Wait()
+
+	return st.report(began, ctx.Err() != nil)
+}
+
+func (c *Crawler) process(ctx context.Context, st *state, j job) []job {
+	res := c.checker.Check(ctx, j.e.u, j.crawl)
+	if res.Err != nil && ctx.Err() != nil && errors.Is(res.Err, ctx.Err()) {
+		// Interrupted mid-check: leave the link unchecked rather than
+		// reporting a cancellation as a broken link.
+		return nil
+	}
+	link := st.record(j, &res)
+	if c.cfg.OnResult != nil {
+		c.cfg.OnResult(link)
+	}
+
+	if !j.crawl || len(res.Body) == 0 || !st.isInternal(res.FinalURL) {
+		return nil
+	}
+	page, err := extract.Links(bytes.NewReader(res.Body))
+	if err != nil {
+		return nil
+	}
+	base := res.FinalURL
+	if page.Base != "" {
+		if b, err := urlnorm.Resolve(base, page.Base); err == nil {
+			base = b
+		}
+	}
+	st.pageParsed()
+
+	seen := make(map[string]bool, len(page.Links))
+	var found []job
+	for _, l := range page.Links {
+		u, err := urlnorm.Resolve(base, l.URL)
+		if err != nil {
+			continue
+		}
+		key := u.String()
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		src := Source{Page: j.e.u.String(), Tag: l.Tag, Attr: l.Attr}
+		honorNoFollow := page.NoFollow && c.cfg.Robots != nil
+		follow := navigable(l.Tag) && !honorNoFollow
+		if next, ok := st.discover(u, key, src, j.e.depth+1, follow); ok {
+			found = append(found, next)
+		}
+	}
+	return found
+}
+
+type entry struct {
+	u     *url.URL
+	depth int
+	// crawlScheduled is set once a fetch-and-parse job has been queued, so
+	// that a link first seen beyond the depth limit can still be upgraded
+	// to a crawl when it is later reached by a shorter path.
+	crawlScheduled bool
+	link           Link
+}
+
+// state is the shared, mutex-guarded bookkeeping for one crawl.
+type state struct {
+	cfg *Config
+
+	mu        sync.Mutex
+	hosts     map[string]bool
+	entries   map[string]*entry
+	scheduled int
+	parsed    int
+	start     string
+}
+
+func newState(cfg *Config, start *url.URL) *state {
+	return &state{
+		cfg:     cfg,
+		hosts:   map[string]bool{start.Host: true},
+		entries: make(map[string]*entry),
+		start:   start.String(),
+	}
+}
+
+func (s *state) seed(start *url.URL) (job, bool) {
+	return s.discover(start, start.String(), Source{}, 0, true)
+}
+
+func (s *state) isInternal(u *url.URL) bool {
+	if u == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.hosts[u.Host]
+}
+
+func (s *state) pageParsed() {
+	s.mu.Lock()
+	s.parsed++
+	s.mu.Unlock()
+}
+
+// navigable reports whether a tag references a document worth crawling.
+// Subresources such as images and scripts are only checked.
+func navigable(tag string) bool {
+	return tag == "a" || tag == "area" || tag == "iframe"
+}
+
+// discover registers a reference to u and returns a job if u needs work.
+// follow is false when the reference must not be crawled even if it is on
+// the same host, for example an image or a link on a nofollow page.
+func (s *state) discover(u *url.URL, key string, src Source, depth int, follow bool) (job, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	internal := s.hosts[u.Host]
+	e, exists := s.entries[key]
+	if !exists {
+		e = &entry{u: u, depth: depth, link: Link{URL: key, Internal: internal, Depth: depth}}
+		s.entries[key] = e
+	}
+	if src.Page != "" {
+		e.link.SourceCount++
+		if len(e.link.Sources) < maxSources {
+			e.link.Sources = append(e.link.Sources, src)
+		}
+	}
+	if depth < e.depth {
+		e.depth = depth
+		e.link.Depth = depth
+	}
+
+	if exists {
+		if e.link.Skipped == "" && !e.crawlScheduled && s.shouldCrawl(e, follow) {
+			e.crawlScheduled = true
+			s.scheduled++
+			return job{e: e, crawl: true}, true
+		}
+		return job{}, false
+	}
+
+	switch {
+	case matchAny(s.cfg.Exclude, key):
+		e.link.Skipped = SkipExcluded
+		return job{}, false
+	case internal && s.cfg.Robots != nil && !s.cfg.Robots.Allowed(u.RequestURI()):
+		e.link.Skipped = SkipRobots
+		return job{}, false
+	case !internal && s.cfg.SkipExternal:
+		e.link.Skipped = SkipExternal
+		return job{}, false
+	}
+	if s.shouldCrawl(e, follow) {
+		e.crawlScheduled = true
+		s.scheduled++
+		return job{e: e, crawl: true}, true
+	}
+	return job{e: e}, true
+}
+
+func (s *state) shouldCrawl(e *entry, follow bool) bool {
+	if !follow || !s.hosts[e.u.Host] {
+		return false
+	}
+	if s.cfg.MaxDepth >= 0 && e.depth > s.cfg.MaxDepth {
+		return false
+	}
+	if s.cfg.MaxPages > 0 && s.scheduled >= s.cfg.MaxPages {
+		return false
+	}
+	if e.depth > 0 && len(s.cfg.Include) > 0 && !matchAny(s.cfg.Include, e.link.URL) {
+		return false
+	}
+	return true
+}
+
+// record stores the outcome of a check and returns a snapshot of the link.
+func (s *state) record(j job, res *check.Result) Link {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	e := j.e
+	// A plain check finishing after a crawl of the same URL was scheduled
+	// must not overwrite the richer crawl result.
+	if j.crawl || !e.crawlScheduled || !e.link.Checked {
+		l := &e.link
+		l.Checked = true
+		l.Page = j.crawl && len(res.Body) > 0
+		l.Status = res.Status
+		l.Method = res.Method
+		l.Redirects = res.Redirects
+		l.Attempts = res.Attempts
+		l.Duration = res.Duration
+		l.Error = check.Describe(res.Err)
+		l.FinalURL = ""
+		if res.FinalURL != nil && len(res.Redirects) > 0 {
+			l.FinalURL = res.FinalURL.String()
+		}
+	}
+
+	// The start URL commonly redirects to its canonical host (http to
+	// https, apex to www). Treat that host as part of the site too.
+	if e.link.URL == s.start && res.FinalURL != nil {
+		s.hosts[res.FinalURL.Host] = true
+	}
+
+	snap := e.link
+	snap.Sources = append([]Source(nil), e.link.Sources...)
+	return snap
+}
+
+func (s *state) report(began time.Time, interrupted bool) *Report {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := &Report{
+		Start:       s.start,
+		StartedAt:   began,
+		Duration:    time.Since(began),
+		Interrupted: interrupted,
+		Pages:       s.parsed,
+		Links:       make([]Link, 0, len(s.entries)),
+	}
+	for _, e := range s.entries {
+		r.Links = append(r.Links, e.link)
+	}
+	sort.Slice(r.Links, func(i, k int) bool { return r.Links[i].URL < r.Links[k].URL })
+	return r
+}
+
+func matchAny(res []*regexp.Regexp, s string) bool {
+	for _, re := range res {
+		if re.MatchString(s) {
+			return true
+		}
+	}
+	return false
+}

@@ -12,12 +12,12 @@ func TestFetch(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		handler    http.HandlerFunc
-		path       string
-		wantAllow  bool
-		wantWarn   bool
-		wantUA     bool
+		name      string
+		handler   http.HandlerFunc
+		path      string
+		wantAllow bool
+		wantWarn  bool
+		wantUA    bool
 	}{
 		{
 			name: "parsed",
