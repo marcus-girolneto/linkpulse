@@ -1,8 +1,4 @@
-// Package urlnorm canonicalizes URLs so that links which point at the same
-// resource compare equal. It is deliberately conservative: it only applies
-// transformations that are safe for every HTTP server (RFC 3986 section 6.2.2
-// syntax-based normalization plus fragment removal) and never touches the
-// query string or path case.
+// Package urlnorm canonicalizes http(s) URLs per RFC 3986 section 6.2.2.
 package urlnorm
 
 import (
@@ -13,8 +9,7 @@ import (
 	"strings"
 )
 
-// ErrUnsupportedScheme is returned for references that are not http or https,
-// such as mailto:, tel:, javascript: or data: URLs.
+// ErrUnsupportedScheme is returned for non-http(s) references.
 var ErrUnsupportedScheme = errors.New("unsupported scheme")
 
 // ErrNoHost is returned when a reference resolves to a URL without a host.
@@ -25,10 +20,7 @@ func Parse(raw string) (*url.URL, error) {
 	return Resolve(nil, raw)
 }
 
-// Resolve resolves ref against base (which may be nil for absolute refs) and
-// returns the normalized result. The returned URL never has a fragment, its
-// scheme and host are lowercase, default ports are removed and an empty path
-// becomes "/".
+// Resolve resolves ref against base (nil for absolute refs) and normalizes it.
 func Resolve(base *url.URL, ref string) (*url.URL, error) {
 	ref = clean(ref)
 	u, err := url.Parse(ref)
@@ -38,15 +30,13 @@ func Resolve(base *url.URL, ref string) (*url.URL, error) {
 	if base != nil {
 		u = base.ResolveReference(u)
 	} else if u.IsAbs() {
-		// ResolveReference also removes dot segments, which we want for
-		// absolute references too.
+		// removes dot segments
 		u = u.ResolveReference(&url.URL{})
 	}
 	return normalize(u)
 }
 
-// String is a convenience wrapper around Resolve that returns the normalized
-// URL in string form.
+// String is like Resolve but returns a string.
 func String(base *url.URL, ref string) (string, error) {
 	u, err := Resolve(base, ref)
 	if err != nil {
@@ -90,22 +80,18 @@ func normalize(u *url.URL) (*url.URL, error) {
 		u.Path = "/"
 		u.RawPath = ""
 	}
-	// An empty "?" carries no information.
 	u.ForceQuery = false
-	// net/url keeps raw spaces in the query; browsers send them as %20.
+	// browsers send query spaces as %20
 	u.RawQuery = strings.ReplaceAll(u.RawQuery, " ", "%20")
 
-	// Some inputs survive url.Parse only thanks to lenient handling of the
-	// original form (for example odd IPv6 literals) but produce a string that
-	// does not parse again. Rejecting them keeps normalization idempotent.
+	// some odd inputs (IPv6 literals) parse once but not twice
 	if _, err := url.Parse(u.String()); err != nil {
 		return nil, fmt.Errorf("normalized form is not a valid URL: %w", err)
 	}
 	return u, nil
 }
 
-// clean mimics how browsers pre-process href attributes: leading and trailing
-// whitespace is trimmed and ASCII tab and newline characters are removed.
+// clean strips whitespace the way browsers do for href values.
 func clean(ref string) string {
 	ref = strings.TrimSpace(ref)
 	if strings.ContainsAny(ref, "\t\n\r") {

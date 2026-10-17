@@ -8,11 +8,8 @@ import (
 	"net/url"
 )
 
-// Fetch downloads and parses robots.txt for site's origin. It follows RFC
-// 9309 for status handling: a 4xx response means no restrictions, a 2xx body
-// is parsed, and a 5xx response disallows the whole site. The returned
-// rules are always usable; a non-nil error is advisory and explains a
-// fallback decision, for example a network failure that led to AllowAll.
+// Fetch downloads and parses robots.txt for site's origin. The returned rules
+// are always usable, a non-nil error only explains the fallback.
 func Fetch(ctx context.Context, client *http.Client, site *url.URL, userAgent string) (*Rules, error) {
 	robotsURL := url.URL{Scheme: site.Scheme, Host: site.Host, Path: "/robots.txt"}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, robotsURL.String(), nil)

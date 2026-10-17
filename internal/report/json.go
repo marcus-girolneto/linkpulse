@@ -9,8 +9,7 @@ import (
 	"github.com/marcus-girolneto/linkpulse/internal/crawl"
 )
 
-// The JSON document is a public contract consumed by scripts and CI jobs, so
-// it has its own types rather than exposing crawl's internals directly.
+// public contract, keep stable
 type jsonReport struct {
 	Start       string     `json:"start"`
 	StartedAt   time.Time  `json:"started_at"`
@@ -54,7 +53,6 @@ type jsonSource struct {
 	Attr string `json:"attr"`
 }
 
-// Link states in the JSON output.
 const (
 	stateOK        = "ok"
 	stateBroken    = "broken"

@@ -1,7 +1,4 @@
-// Package robots implements the subset of the Robots Exclusion Protocol
-// (RFC 9309) a link checker needs: user-agent group selection, Allow and
-// Disallow rules with "*" and "$" wildcards, longest-match precedence and the
-// non-standard but widely used Crawl-delay directive.
+// Package robots parses robots.txt (RFC 9309, plus Crawl-delay).
 package robots
 
 import (
@@ -12,8 +9,7 @@ import (
 	"time"
 )
 
-// maxSize caps how much of a robots.txt file is read. RFC 9309 requires
-// crawlers to parse at least 500 KiB.
+// RFC 9309 requires at least 500 KiB
 const maxSize = 512 << 10
 
 // Rules is the policy that applies to one user agent.
@@ -30,14 +26,10 @@ type rule struct {
 // AllowAll is the policy used when a site has no robots.txt.
 var AllowAll = &Rules{}
 
-// DisallowAll is the policy used when robots.txt is unreachable because of a
-// server error, as RFC 9309 recommends for unreachable files.
+// DisallowAll is the policy used when robots.txt returns a server error.
 var DisallowAll = &Rules{rules: []rule{{pattern: "/", allow: false}}}
 
-// Parse reads a robots.txt body and returns the rules for userAgent. The
-// group whose user-agent token is the longest case-insensitive prefix of
-// userAgent's product token wins; otherwise the "*" group applies.
-// Malformed lines are ignored, so Parse never fails.
+// Parse returns the rules for userAgent. Malformed lines are ignored.
 func Parse(r io.Reader, userAgent string) *Rules {
 	product := productToken(userAgent)
 
@@ -47,10 +39,9 @@ func Parse(r io.Reader, userAgent string) *Rules {
 		delay  time.Duration
 	}
 	var (
-		groups  []*group
-		current *group
-		// A run of consecutive user-agent lines shares the rules that follow.
-		inAgents bool
+		groups   []*group
+		current  *group
+		inAgents bool // consecutive user-agent lines share a group
 	)
 
 	sc := bufio.NewScanner(io.LimitReader(r, maxSize))
@@ -74,7 +65,6 @@ func Parse(r io.Reader, userAgent string) *Rules {
 				continue
 			}
 			if key == "disallow" && val == "" {
-				// "Disallow:" with no path allows everything.
 				continue
 			}
 			current.rules = append(current.rules, rule{pattern: val, allow: key == "allow"})
@@ -129,9 +119,7 @@ func Parse(r io.Reader, userAgent string) *Rules {
 	}
 }
 
-// Allowed reports whether the path (including any query string) may be
-// fetched. The most specific (longest) matching rule wins; on a tie Allow
-// wins. "/robots.txt" is always allowed.
+// Allowed reports whether path (with query) may be fetched.
 func (r *Rules) Allowed(path string) bool {
 	if path == "" {
 		path = "/"
@@ -155,8 +143,6 @@ func (r *Rules) Allowed(path string) bool {
 // CrawlDelay returns the Crawl-delay requested for this agent, or zero.
 func (r *Rules) CrawlDelay() time.Duration { return r.crawlDelay }
 
-// match implements RFC 9309 path matching: "*" matches any sequence of
-// characters and a trailing "$" anchors the pattern at the end of the path.
 func match(pattern, path string) bool {
 	anchored := strings.HasSuffix(pattern, "$")
 	if anchored {
@@ -196,8 +182,6 @@ func splitLine(line string) (key, val string, ok bool) {
 	return key, strings.TrimSpace(v), key != ""
 }
 
-// productToken extracts the product name robots.txt groups match against,
-// for example "linkpulse" from "linkpulse/1.2 (+https://...)".
 func productToken(ua string) string {
 	ua = strings.TrimSpace(ua)
 	if i := strings.IndexAny(ua, "/ "); i >= 0 {

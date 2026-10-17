@@ -1,10 +1,4 @@
-// Package crawl walks a website breadth-first from a start URL, checking
-// every link it finds and following links that stay on the same host.
-//
-// Work is executed by a fixed pool of workers fed by a single dispatcher
-// goroutine. The dispatcher owns an unbounded queue, which lets workers
-// enqueue newly discovered links without ever blocking on each other, and
-// counts outstanding jobs so it knows when the crawl is complete.
+// Package crawl walks a site breadth-first and checks every link it finds.
 package crawl
 
 import (
@@ -27,8 +21,7 @@ type Checker interface {
 	Check(ctx context.Context, u *url.URL, fetch bool) check.Result
 }
 
-// RobotsPolicy decides whether a path on the crawled site may be requested.
-// *robots.Rules satisfies it.
+// RobotsPolicy decides whether a same-host path may be requested.
 type RobotsPolicy interface {
 	Allowed(path string) bool
 }
@@ -40,32 +33,18 @@ const (
 	SkipExternal = "external"
 )
 
-// maxSources bounds how many referring pages are remembered per link. A
-// navigation link present on every page would otherwise grow without limit.
 const maxSources = 25
 
 // Config controls a crawl.
 type Config struct {
-	// MaxDepth is how many links away from the start page the crawler will
-	// follow. Zero checks the start page and its links only. Negative means
-	// unlimited.
-	MaxDepth int
-	// MaxPages caps the number of pages fetched and parsed. Zero or negative
-	// means unlimited.
-	MaxPages int
-	// Workers is the number of concurrent checks. Defaults to 16.
-	Workers int
-	// Include, when non-empty, restricts which same-host pages are crawled
-	// for further links. Links on crawled pages are still checked.
-	Include []*regexp.Regexp
-	// Exclude lists patterns for URLs that are neither checked nor crawled.
-	Exclude []*regexp.Regexp
-	// Robots, if set, is consulted before requesting any same-host URL.
-	Robots RobotsPolicy
-	// SkipExternal disables checking links that leave the start host.
+	MaxDepth     int              // negative means unlimited
+	MaxPages     int              // <= 0 means unlimited
+	Workers      int              // default 16
+	Include      []*regexp.Regexp // limits which pages are crawled, not checked
+	Exclude      []*regexp.Regexp
+	Robots       RobotsPolicy
 	SkipExternal bool
-	// OnResult, if set, is called from worker goroutines after each check
-	// completes. It must be safe for concurrent use and should be fast.
+	// OnResult is called concurrently from workers.
 	OnResult func(Link)
 }
 
@@ -78,13 +57,10 @@ type Source struct {
 
 // Link is the outcome for one unique (normalized) URL.
 type Link struct {
-	URL      string
-	Internal bool
-	// Page is true when the URL was fetched with GET and returned HTML.
-	Page  bool
-	Depth int
-	// Checked is false when the crawl was interrupted before this link
-	// could be checked, or when the link was skipped.
+	URL       string
+	Internal  bool
+	Page      bool // fetched and parsed as HTML
+	Depth     int
 	Checked   bool
 	Skipped   string
 	Status    int
@@ -94,8 +70,7 @@ type Link struct {
 	Error     string
 	Attempts  int
 	Duration  time.Duration
-	// Sources holds up to maxSources referring pages; SourceCount is the
-	// total number of distinct referring pages seen.
+	// Sources is capped at maxSources; SourceCount is the full count.
 	Sources     []Source
 	SourceCount int
 }
@@ -105,8 +80,7 @@ func (l *Link) Broken() bool {
 	return l.Checked && (l.Error != "" || l.Status >= 400 || l.Status == 0)
 }
 
-// Redirected reports whether the link was checked, succeeded and went
-// through at least one redirect.
+// Redirected reports whether the link succeeded after a redirect.
 func (l *Link) Redirected() bool {
 	return l.Checked && !l.Broken() && len(l.Redirects) > 0
 }
@@ -117,10 +91,8 @@ type Report struct {
 	StartedAt   time.Time
 	Duration    time.Duration
 	Interrupted bool
-	// Pages is the number of pages fetched and parsed for links.
-	Pages int
-	// Links holds one entry per unique URL, sorted by URL.
-	Links []Link
+	Pages       int
+	Links       []Link // sorted by URL
 }
 
 // Stats summarizes a report.
@@ -169,9 +141,7 @@ type job struct {
 	crawl bool
 }
 
-// Run crawls from start until there is nothing left to do or ctx is done.
-// On cancellation it stops dispatching, waits for in-flight checks to
-// return and reports everything gathered so far with Interrupted set.
+// Run crawls from start. If ctx ends first the report is partial and Interrupted.
 func (c *Crawler) Run(ctx context.Context, start *url.URL) *Report {
 	began := time.Now()
 	st := newState(&c.cfg, start)
@@ -226,8 +196,7 @@ func (c *Crawler) Run(ctx context.Context, start *url.URL) *Report {
 func (c *Crawler) process(ctx context.Context, st *state, j job) []job {
 	res := c.checker.Check(ctx, j.e.u, j.crawl)
 	if res.Err != nil && ctx.Err() != nil && errors.Is(res.Err, ctx.Err()) {
-		// Interrupted mid-check: leave the link unchecked rather than
-		// reporting a cancellation as a broken link.
+		// canceled mid-check, leave it unchecked
 		return nil
 	}
 	link := st.record(j, &res)
@@ -274,14 +243,11 @@ func (c *Crawler) process(ctx context.Context, st *state, j job) []job {
 type entry struct {
 	u     *url.URL
 	depth int
-	// crawlScheduled is set once a fetch-and-parse job has been queued, so
-	// that a link first seen beyond the depth limit can still be upgraded
-	// to a crawl when it is later reached by a shorter path.
+	// a link first seen too deep can still be upgraded to a crawl later
 	crawlScheduled bool
 	link           Link
 }
 
-// state is the shared, mutex-guarded bookkeeping for one crawl.
 type state struct {
 	cfg *Config
 
@@ -307,9 +273,7 @@ func (s *state) seed(start *url.URL) (job, bool) {
 	return s.discover(start, start.String(), Source{}, 0, true)
 }
 
-// claimPage reports whether the page at final (the URL after redirects)
-// should be parsed: it must be on the crawled site and not parsed before.
-// Without this, /old redirecting to /new would parse /new twice.
+// claimPage dedups parsing by final URL, so /old -> /new isn't parsed twice.
 func (s *state) claimPage(final *url.URL) bool {
 	if final == nil {
 		return false
@@ -324,15 +288,10 @@ func (s *state) claimPage(final *url.URL) bool {
 	return true
 }
 
-// navigable reports whether a tag references a document worth crawling.
-// Subresources such as images and scripts are only checked.
 func navigable(tag string) bool {
 	return tag == "a" || tag == "area" || tag == "iframe"
 }
 
-// discover registers a reference to u and returns a job if u needs work.
-// follow is false when the reference must not be crawled even if it is on
-// the same host, for example an image or a link on a nofollow page.
 func (s *state) discover(u *url.URL, key string, src Source, depth int, follow bool) (job, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -398,14 +357,12 @@ func (s *state) shouldCrawl(e *entry, follow bool) bool {
 	return true
 }
 
-// record stores the outcome of a check and returns a snapshot of the link.
 func (s *state) record(j job, res *check.Result) Link {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	e := j.e
-	// A plain check finishing after a crawl of the same URL was scheduled
-	// must not overwrite the richer crawl result.
+	// don't let a plain check overwrite a crawl result
 	if j.crawl || !e.crawlScheduled || !e.link.Checked {
 		l := &e.link
 		l.Checked = true
@@ -422,8 +379,7 @@ func (s *state) record(j job, res *check.Result) Link {
 		}
 	}
 
-	// The start URL commonly redirects to its canonical host (http to
-	// https, apex to www). Treat that host as part of the site too.
+	// start URL redirecting to www or https: treat that host as internal too
 	if e.link.URL == s.start && res.FinalURL != nil {
 		s.hosts[res.FinalURL.Host] = true
 	}

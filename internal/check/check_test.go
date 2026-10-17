@@ -19,8 +19,6 @@ import (
 	"time"
 )
 
-// countingGate is a Gate that records acquisitions and verifies every permit
-// is released.
 type countingGate struct {
 	acquired atomic.Int32
 	inFlight atomic.Int32

@@ -8,8 +8,6 @@ import (
 	"github.com/marcus-girolneto/linkpulse/internal/crawl"
 )
 
-// maxMarkdownSources limits the "found on" list per link so a navigation
-// link that appears on every page does not blow up a PR comment.
 const maxMarkdownSources = 3
 
 func writeMarkdown(w io.Writer, rep *crawl.Report, opts Options) error {
@@ -71,8 +69,6 @@ func mdSources(l *crawl.Link) string {
 	return strings.Join(parts, "<br>")
 }
 
-// mdCode wraps s in a code span so URLs are not auto-linked or interpreted,
-// escaping pipes that would otherwise end the table cell.
 func mdCode(s string) string {
 	s = strings.ReplaceAll(s, "|", `\|`)
 	if strings.Contains(s, "`") {

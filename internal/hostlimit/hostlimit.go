@@ -1,5 +1,4 @@
-// Package hostlimit enforces per-host politeness: a cap on concurrent
-// in-flight requests and a token-bucket request rate for every host.
+// Package hostlimit caps per-host concurrency and request rate.
 package hostlimit
 
 import (
@@ -12,18 +11,12 @@ import (
 
 // Config controls the limits applied to each host.
 type Config struct {
-	// Rate is the sustained number of requests per second allowed per host.
-	// Zero or negative disables rate limiting.
-	Rate float64
-	// Burst is the token bucket size. Values below 1 are treated as 1.
-	Burst int
-	// Concurrency caps simultaneous requests per host. Values below 1 are
-	// treated as 1.
+	Rate        float64 // req/s per host, <= 0 means unlimited
+	Burst       int
 	Concurrency int
 }
 
-// Limiter hands out per-host permits. The zero value is not usable; create
-// one with New. A Limiter is safe for concurrent use.
+// Limiter hands out per-host permits. Safe for concurrent use.
 type Limiter struct {
 	cfg   Config
 	mu    sync.Mutex
@@ -64,10 +57,8 @@ func (l *Limiter) get(name string) *host {
 	return h
 }
 
-// Acquire blocks until a request to host may start: a concurrency slot is
-// free and the host's rate limiter grants a token. The returned release
-// function must be called exactly once when the request finishes. Acquire
-// returns ctx.Err() if ctx ends first, in which case nothing is held.
+// Acquire blocks until a request to hostname may start. Call release when
+// the request finishes. On error nothing is held.
 func (l *Limiter) Acquire(ctx context.Context, hostname string) (release func(), err error) {
 	h := l.get(hostname)
 	select {
@@ -75,8 +66,7 @@ func (l *Limiter) Acquire(ctx context.Context, hostname string) (release func(),
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	// The slot is taken before waiting for a token so that a burst of
-	// waiters cannot drain the bucket and then pile onto the host at once.
+	// take the slot before the token so waiters can't drain the bucket
 	if err := h.limiter.Wait(ctx); err != nil {
 		<-h.sem
 		return nil, err
@@ -85,9 +75,7 @@ func (l *Limiter) Acquire(ctx context.Context, hostname string) (release func(),
 	return func() { once.Do(func() { <-h.sem }) }, nil
 }
 
-// SlowDown lowers the rate for hostname so that consecutive requests are at
-// least delay apart, for example to honor a robots.txt Crawl-delay. It never
-// raises the configured rate.
+// SlowDown spaces requests to hostname at least delay apart, never faster.
 func (l *Limiter) SlowDown(hostname string, delay time.Duration) {
 	if delay <= 0 {
 		return

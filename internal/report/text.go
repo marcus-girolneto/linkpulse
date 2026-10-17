@@ -27,7 +27,7 @@ func (p painter) paint(code, s string) string {
 	return code + s + ansiReset
 }
 
-// errWriter latches the first write error so rendering code can stay linear.
+// errWriter keeps the first write error.
 type errWriter struct {
 	w   io.Writer
 	err error
@@ -97,9 +97,6 @@ func foundOn(l *crawl.Link) string {
 	}
 }
 
-// writeTable prints left-aligned columns. Widths are computed on the plain
-// text so ANSI codes do not disturb alignment; colorCol is painted with
-// color.
 func writeTable(out *errWriter, p painter, header []string, rows [][]string, colorCol int, color string) {
 	widths := make([]int, len(header))
 	for i, h := range header {

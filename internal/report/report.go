@@ -1,5 +1,4 @@
-// Package report renders crawl results as a terminal table, JSON or
-// Markdown.
+// Package report renders crawl results as text, JSON or Markdown.
 package report
 
 import (
@@ -40,9 +39,7 @@ func ParseFormat(s string) (Format, error) {
 
 // Options tune rendering.
 type Options struct {
-	// Color enables ANSI colors in the text format.
-	Color bool
-	// ShowRedirects lists redirected links in text and Markdown output.
+	Color         bool
 	ShowRedirects bool
 }
 
@@ -59,7 +56,6 @@ func Write(w io.Writer, rep *crawl.Report, format Format, opts Options) error {
 	return fmt.Errorf("%w %q", ErrUnknownFormat, format)
 }
 
-// statusText is the short outcome shown in the status column.
 func statusText(l *crawl.Link) string {
 	if l.Error != "" {
 		return l.Error

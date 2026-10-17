@@ -13,9 +13,6 @@ import (
 	"github.com/marcus-girolneto/linkpulse/internal/hostlimit"
 )
 
-// benchSite serves n pages. Page i links to ten other pages and five shared
-// static assets, so a full crawl fetches n pages and checks n+5 URLs. Every
-// response is delayed by latency to model a remote server.
 func benchSite(b *testing.B, n int, latency time.Duration) *httptest.Server {
 	b.Helper()
 	assets := []string{"/static/app.css", "/static/app.js", "/static/logo.svg", "/static/hero.jpg", "/static/font.woff2"}

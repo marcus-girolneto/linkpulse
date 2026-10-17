@@ -10,7 +10,7 @@ import (
 	"github.com/marcus-girolneto/linkpulse/internal/cli"
 )
 
-// Set at build time via -ldflags "-X main.version=...".
+// set via -ldflags
 var (
 	version = "dev"
 	commit  = ""
@@ -20,8 +20,7 @@ var (
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	go func() {
-		// After the first signal, restore default handling so a second
-		// Ctrl-C terminates immediately instead of waiting for the report.
+		// second ctrl-c kills immediately
 		<-ctx.Done()
 		stop()
 	}()

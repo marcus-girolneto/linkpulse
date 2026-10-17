@@ -146,8 +146,6 @@ func BenchmarkLinks(b *testing.B) {
 	}
 }
 
-// BenchmarkParseDOM is the baseline the tokenizer approach is measured
-// against: build the full tree with html.Parse, then walk it.
 func BenchmarkParseDOM(b *testing.B) {
 	page := syntheticPage(500)
 	b.SetBytes(int64(len(page)))
@@ -174,8 +172,6 @@ func BenchmarkParseDOM(b *testing.B) {
 	}
 }
 
-// syntheticPage builds a document with n links interleaved with typical
-// markup noise (text, nested divs, inline styles and scripts).
 func syntheticPage(n int) []byte {
 	var sb strings.Builder
 	sb.WriteString(`<!doctype html><html><head><title>bench</title>`)

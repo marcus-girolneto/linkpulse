@@ -18,8 +18,6 @@ import (
 	"github.com/marcus-girolneto/linkpulse/internal/robots"
 )
 
-// site is an httptest server serving a small graph of pages and recording
-// how often each path was requested.
 type site struct {
 	*httptest.Server
 	mu   sync.Mutex
@@ -163,8 +161,7 @@ func TestCrawlSite(t *testing.T) {
 	if rep.Interrupted {
 		t.Error("report marked interrupted")
 	}
-	// /, /a, /b, /deep/1-3 and /nofollow; /redir lands on /a, which is
-	// parsed only once.
+	// /redir lands on /a, parsed once
 	if rep.Pages != 7 {
 		t.Errorf("pages parsed = %d, want 7", rep.Pages)
 	}
@@ -355,8 +352,6 @@ func TestCrawlStartDisallowed(t *testing.T) {
 func TestCrawlCancellation(t *testing.T) {
 	t.Parallel()
 
-	// Every page is slow and links to ten new pages, so the crawl would run
-	// for a long time without cancellation.
 	slow := newSite(t, nil, func(mux *http.ServeMux) {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			select {
@@ -413,9 +408,7 @@ func (s stubChecker) Check(_ context.Context, u *url.URL, _ bool) check.Result {
 
 func TestCrawlUpgradesCheckedLinkToPage(t *testing.T) {
 	t.Parallel()
-	// /far is first reached at depth 2 (too deep for MaxDepth 1) through
-	// /slow-branch, and later at depth 1 directly from /. Whatever order the
-	// workers run in, /far must end up crawled.
+	// /far is first seen too deep via /slow-branch
 	start := mustURL(t, "http://site.test/")
 	html := func(links ...string) check.Result {
 		return check.Result{Status: 200, Method: "GET", Body: []byte(page(links...))}

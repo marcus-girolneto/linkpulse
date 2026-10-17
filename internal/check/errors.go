@@ -11,9 +11,6 @@ import (
 	"syscall"
 )
 
-// retryableErr reports whether a transport error is worth another attempt.
-// Timeouts, resets and truncated responses are typically transient; DNS
-// misses, refused connections and TLS failures are not.
 func retryableErr(err error) bool {
 	if errors.Is(err, ErrTimeout) ||
 		errors.Is(err, io.ErrUnexpectedEOF) ||
@@ -30,8 +27,7 @@ func retryableErr(err error) bool {
 	return errors.As(err, &netErr) && netErr.Timeout()
 }
 
-// Describe turns an error from Result.Err into a short, stable phrase
-// suitable for a report column.
+// Describe turns a Result.Err into a short phrase for reports.
 func Describe(err error) string {
 	if err == nil {
 		return ""

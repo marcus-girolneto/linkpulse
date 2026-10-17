@@ -10,8 +10,6 @@ import (
 	"github.com/marcus-girolneto/linkpulse/internal/crawl"
 )
 
-// progress renders a single, continuously rewritten status line on a
-// terminal while the crawl runs.
 type progress struct {
 	w       io.Writer
 	checked atomic.Int64
@@ -47,7 +45,6 @@ func (p *progress) start() {
 			case <-t.C:
 				p.render()
 			case <-p.done:
-				// Erase the status line so the report starts on a clean line.
 				fmt.Fprint(p.w, "\r\x1b[K")
 				return
 			}

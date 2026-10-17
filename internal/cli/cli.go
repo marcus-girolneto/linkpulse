@@ -1,5 +1,4 @@
-// Package cli implements the linkpulse command: flag parsing, wiring of the
-// crawler's dependencies, progress output and exit codes.
+// Package cli implements the linkpulse command.
 package cli
 
 import (
@@ -33,8 +32,7 @@ const (
 
 // Env is everything Run needs from the outside world.
 type Env struct {
-	Stdout, Stderr io.Writer
-	// StdoutTTY and StderrTTY report whether the streams are terminals.
+	Stdout, Stderr       io.Writer
 	StdoutTTY, StderrTTY bool
 	Getenv               func(string) string
 	Version              string
@@ -106,8 +104,7 @@ func newFlagSet(o *options, stderr io.Writer, version string) *flag.FlagSet {
 	fs := flag.NewFlagSet("linkpulse", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		// PrintDefaults writes single-dash names; show the double-dash form
-		// users are used to (the flag package accepts both).
+		// show --flags instead of -flags
 		var buf strings.Builder
 		fs.SetOutput(&buf)
 		fs.PrintDefaults()

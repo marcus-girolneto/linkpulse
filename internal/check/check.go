@@ -1,7 +1,4 @@
-// Package check performs the HTTP side of link checking: it issues requests
-// through a politeness gate, follows redirects by hand so the chain can be
-// reported, falls back from HEAD to GET when servers reject HEAD, and retries
-// transient failures with exponential backoff.
+// Package check sends the HTTP requests that check links.
 package check
 
 import (
@@ -27,36 +24,20 @@ var (
 	ErrTimeout          = errors.New("timeout")
 )
 
-// Gate grants permission to send a request to a host. The returned release
-// function is called once the response body has been closed.
+// Gate grants permission to send a request to a host.
 type Gate interface {
 	Acquire(ctx context.Context, host string) (release func(), err error)
 }
 
-// Config tunes a Checker. Zero values fall back to the defaults noted on
-// each field.
+// Config tunes a Checker. Zero values get defaults.
 type Config struct {
-	// UserAgent is sent with every request.
-	UserAgent string
-	// Timeout bounds a single attempt, including reading the body.
-	// Default 10s.
-	Timeout time.Duration
-	// Retries is the number of additional attempts after a transient
-	// failure (network error, timeout, 429, 502, 503, 504). Negative
-	// disables retries.
-	Retries int
-	// MaxRedirects is the longest redirect chain that is followed.
-	// Default 10.
-	MaxRedirects int
-	// Backoff is the base delay between retries; attempt n waits a
-	// jittered Backoff * 2^n. Default 250ms.
-	Backoff time.Duration
-	// MaxRetryAfter is the longest Retry-After the checker is willing to
-	// honor; longer waits are reported as failures instead. Default 10s.
-	MaxRetryAfter time.Duration
-	// MaxBodyBytes caps how much of an HTML page is read when fetching.
-	// Default 5 MiB.
-	MaxBodyBytes int64
+	UserAgent     string
+	Timeout       time.Duration // per attempt, default 10s
+	Retries       int
+	MaxRedirects  int           // default 10
+	Backoff       time.Duration // base retry delay, default 250ms
+	MaxRetryAfter time.Duration // longer Retry-After counts as failure, default 10s
+	MaxBodyBytes  int64         // default 5 MiB
 }
 
 func (c *Config) setDefaults() {
@@ -88,27 +69,15 @@ type Hop struct {
 
 // Result describes the outcome of checking one URL.
 type Result struct {
-	// Status is the HTTP status of the final response, or 0 if no response
-	// was received.
-	Status int
-	// Method is the HTTP method of the final request.
-	Method string
-	// Redirects lists every redirect response that was followed, in order.
-	Redirects []Hop
-	// FinalURL is the URL that produced the final response.
-	FinalURL *url.URL
-	// ContentType is the media type of the final response, without
-	// parameters.
+	Status      int // 0 if no response
+	Method      string
+	Redirects   []Hop
+	FinalURL    *url.URL
 	ContentType string
-	// Body holds the response body when Fetch was requested and the final
-	// response is a successful HTML document.
-	Body []byte
-	// Attempts counts every request sent, across retries and redirects.
-	Attempts int
-	// Duration is the wall time spent on the check, including waits.
-	Duration time.Duration
-	// Err is set when no usable final response was obtained.
-	Err error
+	Body        []byte // only for fetched HTML pages
+	Attempts    int
+	Duration    time.Duration
+	Err         error
 }
 
 // Checker checks URLs over HTTP. It is safe for concurrent use.
@@ -119,9 +88,7 @@ type Checker struct {
 	sleep  func(ctx context.Context, d time.Duration) error
 }
 
-// New returns a Checker that sends requests with a copy of client, waiting
-// on gate before each request. client's redirect policy is replaced because
-// the Checker follows redirects itself.
+// New returns a Checker using a copy of client with redirects disabled.
 func New(client *http.Client, gate Gate, cfg Config) *Checker {
 	cfg.setDefaults()
 	cl := *client
@@ -129,12 +96,8 @@ func New(client *http.Client, gate Gate, cfg Config) *Checker {
 	return &Checker{client: &cl, gate: gate, cfg: cfg, sleep: sleepCtx}
 }
 
-// Check requests u. With fetch set it uses GET and, if the final response
-// is a successful HTML page, returns its body. Otherwise it sends HEAD and
-// confirms any error status with GET, because HEAD support is uneven in
-// practice: besides the expected 405 and 501, some servers answer HEAD with
-// 403 or even 404 for pages that load fine. 429 is not re-requested, since
-// the server has just asked for fewer requests.
+// Check requests u. With fetch it GETs and returns HTML bodies, otherwise it
+// sends HEAD and confirms error statuses (except 429) with GET.
 func (c *Checker) Check(ctx context.Context, u *url.URL, fetch bool) Result {
 	start := time.Now()
 	method := http.MethodHead
@@ -160,8 +123,7 @@ func (c *Checker) follow(ctx context.Context, method string, u *url.URL, fetch b
 	cur := u
 	seen := map[string]bool{cur.String(): true}
 	for {
-		// The body is closed by discard on every path below; a deferred close
-		// would hold connections and gate permits across redirect hops.
+		// closed by discard below, not deferred, so permits aren't held across hops
 		resp, attempts, err := c.doWithRetry(ctx, method, cur) //nolint:bodyclose // see above
 		res.Attempts += attempts
 		if err != nil {
@@ -218,8 +180,6 @@ func (c *Checker) readHTML(resp *http.Response, contentType *string) ([]byte, er
 	return body, nil
 }
 
-// doWithRetry sends one request, retrying transient failures. The returned
-// response body releases the gate and the attempt's context when closed.
 func (c *Checker) doWithRetry(ctx context.Context, method string, u *url.URL) (*http.Response, int, error) {
 	for attempt := 0; ; attempt++ {
 		resp, err := c.do(ctx, method, u)
@@ -299,8 +259,6 @@ func (b *releasingBody) Close() error {
 	return err
 }
 
-// discard drains a small amount of the body so the connection can be reused,
-// then closes it.
 func discard(body io.ReadCloser) {
 	_, _ = io.CopyN(io.Discard, body, 64<<10)
 	_ = body.Close()
@@ -308,8 +266,6 @@ func discard(body io.ReadCloser) {
 
 func (c *Checker) backoff(attempt int) time.Duration {
 	d := c.cfg.Backoff << min(attempt, 10)
-	// Jitter spreads retries from many workers hitting the same host; it
-	// does not need a cryptographic source.
 	return d/2 + rand.N(d/2+1) //nolint:gosec // jitter only
 }
 
@@ -342,8 +298,6 @@ func retryableStatus(status int) bool {
 	return false
 }
 
-// retryAfter parses a Retry-After header given as delay-seconds or as an
-// HTTP date.
 func retryAfter(v string, now time.Time) (time.Duration, bool) {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -377,8 +331,6 @@ func isHTML(mt string) bool {
 	return mt == "text/html" || mt == "application/xhtml+xml"
 }
 
-// unwrapURLError strips the *url.Error wrapper, whose message repeats the
-// method and URL that the report already shows.
 func unwrapURLError(err error) error {
 	var ue *url.Error
 	if errors.As(err, &ue) {

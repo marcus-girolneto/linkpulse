@@ -45,7 +45,7 @@ func TestConcurrencyCap(t *testing.T) {
 func TestRateLimit(t *testing.T) {
 	t.Parallel()
 
-	// 50 req/s with burst 1: 11 requests need at least 10 intervals of 20ms.
+	// 11 requests at 50/s need >= 200ms
 	l := New(Config{Rate: 50, Burst: 1, Concurrency: 100})
 	start := time.Now()
 	for range 11 {
@@ -110,7 +110,6 @@ func TestAcquireHonorsContext(t *testing.T) {
 		if _, err := l.Acquire(ctx, "h"); err == nil {
 			t.Fatal("expected error waiting for a token")
 		}
-		// The failed acquire must not leak the concurrency slot.
 		select {
 		case l.get("h").sem <- struct{}{}:
 		default:
@@ -150,7 +149,6 @@ func TestSlowDown(t *testing.T) {
 		t.Errorf("4 requests with 30ms crawl delay took %v, want >= ~90ms", elapsed)
 	}
 
-	// SlowDown never speeds a host up.
 	slow := New(Config{Rate: 1, Burst: 1})
 	slow.SlowDown("h", time.Millisecond)
 	if got := slow.get("h").limiter.Limit(); got != 1 {

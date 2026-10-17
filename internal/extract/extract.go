@@ -1,8 +1,4 @@
 // Package extract pulls link references out of HTML documents.
-//
-// It tokenizes rather than builds a DOM: the tokenizer streams over the input
-// without materializing a tree and is considerably faster than html.Parse,
-// which matters when a crawl visits thousands of pages.
 package extract
 
 import (
@@ -16,30 +12,19 @@ import (
 
 // Link is a raw reference found in a document, before resolution.
 type Link struct {
-	// URL is the attribute value as written in the document.
-	URL string `json:"url"`
-	// Tag is the element the reference was found on, for example "a" or "img".
-	Tag string `json:"tag"`
-	// Attr is the attribute holding the reference, for example "href".
+	URL  string `json:"url"` // as written in the document
+	Tag  string `json:"tag"`
 	Attr string `json:"attr"`
 }
 
 // Result is everything Links learned from a document.
 type Result struct {
-	// Links in document order. Duplicates are preserved; deduplication
-	// happens after resolution.
-	Links []Link `json:"links"`
-	// Base is the value of the first <base href> element, if any.
-	Base string `json:"base,omitempty"`
-	// NoFollow is true when a robots meta tag forbids following links.
-	NoFollow bool `json:"nofollow,omitempty"`
+	Links    []Link `json:"links"` // document order, duplicates kept
+	Base     string `json:"base,omitempty"`
+	NoFollow bool   `json:"nofollow,omitempty"`
 }
 
-// Links tokenizes r and returns the references it contains. It recognizes
-// a[href], area[href], link[href], img[src|srcset], source[src|srcset],
-// script[src], iframe[src], audio[src] and video[src|poster]. Errors from r
-// other than io.EOF are returned along with any links found before the
-// failure.
+// Links returns the references in r, plus those found before any read error.
 func Links(r io.Reader) (Result, error) {
 	var res Result
 	z := html.NewTokenizer(r)
@@ -74,8 +59,7 @@ func interesting(a atom.Atom) bool {
 	return false
 }
 
-// attrs holds the attribute values extract cares about. Reading into fixed
-// fields instead of a map avoids allocating for every attribute of every tag.
+// fixed fields instead of a map to avoid per-attribute allocs
 type attrs struct {
 	href, src, srcset, poster, rel, name, content string
 	seen                                          uint8
@@ -95,8 +79,7 @@ func readAttrs(z *html.Tokenizer) attrs {
 	var a attrs
 	for {
 		k, v, more := z.TagAttr()
-		// The conversion in a switch does not allocate. The first
-		// occurrence of an attribute wins, matching browser behavior.
+		// first occurrence wins, like browsers
 		switch string(k) {
 		case "href":
 			a.set(&a.href, seenHref, v)
@@ -142,8 +125,7 @@ func (res *Result) collect(t atom.Atom, a *attrs) {
 		res.add(tag, "href", a.href)
 	case atom.Link:
 		if hasToken(a.rel, "preconnect", "dns-prefetch") {
-			// These name origins rather than resources; the bare origin
-			// often 404s and checking it says nothing about the page.
+			// origins, not resources
 			return
 		}
 		res.add(tag, "href", a.href)
@@ -181,8 +163,6 @@ func hasToken(list string, want ...string) bool {
 	return false
 }
 
-// parseSrcset returns the URLs in a srcset attribute value, a comma-separated
-// list of "url [descriptor]" candidates.
 func parseSrcset(s string) []string {
 	var out []string
 	for cand := range strings.SplitSeq(s, ",") {
